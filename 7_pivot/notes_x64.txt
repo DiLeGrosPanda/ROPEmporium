@@ -13,6 +13,10 @@ Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab
 msf-pattern_offset -l 50 -q b3Ab
 [*] Exact match at offset 40
 
-Big issue I faced with pwntools:
+Issues faced:
  - The payloads sent were read a single time, thus being only one
- - Fix: Add a wait() between both (or add "recvuntil") (or readuntil())
+ - .got lazily loaded. Updated only when a function is called (or LD_BIND_NOW)
+
+
+Not super sure about pwntools ROP.migrate function ?
+There's "nop; leave; ret;" so could I abuse it as well ?
